@@ -1,0 +1,125 @@
+StartEvent = game.ReplicatedStorage:WaitForChild("StartEvent")
+EndEvent = game.ReplicatedStorage:WaitForChild("EndEvent")
+
+--define the service we need
+Players = game:GetService("Players")
+
+--get the folder and the contents we need from the workspace
+local RampRace = workspace.RampRace
+local ProximityPrompt = RampRace.StartButton.ProximityPrompt
+local StartArea = RampRace.StartArea
+local Goal = RampRace.Goal
+
+--disable collision on the goal so we can send obstacles out of it
+Goal.CanCollide = false
+
+
+--keep track of if the game is running
+local started = false
+
+--spawns balls that roll down the ramp
+function spawnObstacles()
+	--loops as the game runs
+	while started do
+		--create a new ball
+		local obstacle = Instance.new("Part")
+		obstacle.Name = "Ball"
+		obstacle.Shape = "Ball"
+		
+		--material is Metal so it has enough mass to knock players over
+		obstacle.Material = "Metal"
+		obstacle.BrickColor = BrickColor.Random()
+		
+		--randomly set ball size between 5 and 12 studs
+		--NOTE: The higher these values, the harder the game will be
+		local maxSize = 12
+		local minSize = 5
+		local randomSize = math.random(minSize, maxSize)
+		obstacle.Size = Vector3.new(randomSize, randomSize, randomSize)
+		
+		--place the ball at the goal, looking towards the start area
+		obstacle.Parent = RampRace
+		obstacle.CFrame = CFrame.new(Goal.Position, StartArea.Position)
+		
+		--adjust the ball's heading randomly within a 60 degree cone
+		obstacle.CFrame *= CFrame.Angles(0, math.rad(math.random(-30, 30)), 0)
+		
+		--launch the ball towards where it's looking
+		obstacle.AssemblyLinearVelocity = obstacle.CFrame.LookVector * 50		
+		wait(0.5)
+	end
+end
+
+--starts the game
+function startGame()
+	--fire the StartEvent
+	StartEvent:FireAllClients()
+	
+	--go through all the players
+	for i, player in Players:GetPlayers() do
+		local newPosition
+		
+		--Spread the players evenly along the start area, 5 studs up
+		--NOTE: adjust the Vector3 if the ramp runs along the Z axis instead of the X axis
+		if i % 2 == 0 then
+			newPosition = StartArea.Position + Vector3.new(2 * (i-1), 5, 0)
+		else 
+			newPosition = StartArea.Position + Vector3.new(-2 * i, 5, 0)
+		end
+		local hum = player.Character.HumanoidRootPart
+		
+		--move each player to their position, looking at the goal
+		hum.CFrame = CFrame.new(newPosition, Goal.Position)
+		
+		--anchor them during the countdown
+		hum.Anchored = true
+	end
+	wait (3)
+	
+	--unanchor all the players
+	for i, player in Players:GetPlayers() do
+		player.Character.HumanoidRootPart.Anchored = false
+	end
+	started = true
+	spawnObstacles()
+end
+
+--start the game when the start button is triggered
+ProximityPrompt.Triggered:Connect(startGame)
+
+--TESTING BREAK
+--Test the start of your game!(It won't have an end yet)
+
+--ends the game when a player touches the Goal, with that player as the winner
+function endTouched(part)
+	local Player = Players:GetPlayerFromCharacter(part.Parent)
+	if Player and started then
+		endGame(Player)
+	end
+end
+
+--fires the end event when the game is over and adds sparkles to the winner
+function endGame(Player)
+	started = false
+	
+	--fire the EndEvent for every player, with the winner as an argument
+	EndEvent:FireAllClients(Player)
+
+	--go through all the balls created during the game and destroy them
+	for i, part in RampRace:GetDescendants() do
+		if part.Name == "Ball" then
+			part:Destroy()
+		end
+	end
+	
+	--add sparkles to the winner
+	local sparkles = Instance.new("Sparkles")
+	sparkles.Parent = Player.Character.HumanoidRootPart
+	wait(5)
+	
+	--remove the sparkles
+	sparkles:Destroy()
+end
+
+--check for a winner with the Goal is touched
+Goal.Touched:Connect(endTouched)
